@@ -1,0 +1,88 @@
+name: Build and deploy WasmBolt
+
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install the Emscripten build environment
+        uses: mamba-org/setup-micromamba@v2
+        with:
+          environment-file: environment-wasm-build.yml
+          environment-name: wasmbolt-wasm-build
+          init-shell: bash
+
+      - name: Install target packages
+        shell: bash -l {0}
+        run: |
+          micromamba create -y \
+            -n wasmbolt-wasm-host \
+            -f environment-wasm-host.yml \
+            --platform=emscripten-wasm32
+
+      - name: Build WasmBolt
+        shell: bash -l {0}
+        env:
+          WASMBOLT_ARCH: wasm32
+        run: |
+          set -euo pipefail
+          export LLVM_WASM_PREFIX="${MAMBA_ROOT_PREFIX}/envs/wasmbolt-wasm-host"
+          export EMSCRIPTEN_SYSROOT="${CONDA_PREFIX}/opt/emsdk/upstream/emscripten/cache/sysroot"
+          bash scripts/build.sh
+
+      - name: Verify deployment artifacts
+        shell: bash -l {0}
+        run: |
+          set -euo pipefail
+          test -s site/index.html
+          test -s site/ui/app.js
+          test -s site/ui/styles.css
+          test -s site/runtime/Compiler.js
+          test -s site/runtime/Compiler.wasm
+          test -s site/runtime/Compiler.data
+          test -s site/tools/worker.js
+          test -s site/language-services/clangd/runtime/clangd.js
+          test -s site/language-services/clangd/runtime/clangd.wasm
+          test -s site/coi-serviceworker.js
+          test -s site/coi-serviceworker.LICENSE
+          test -s site/ui/isolation.js
+          for tool in opt llc llvm-ar llvm-cxxfilt llvm-nm llvm-objcopy \
+                      llvm-objdump llvm-readobj llvm-size mlir-opt mlir-translate dot; do
+            test -s "site/tools/${tool}.js"
+            test -s "site/tools/${tool}.wasm"
+          done
+          grep -q 'WasmBolt' site/index.html
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: site
+
+  deploy:
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-24.04
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

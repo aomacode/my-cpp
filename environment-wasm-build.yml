@@ -1,0 +1,11 @@
+name: wasmbolt-wasm-build
+
+channels:
+  - https://repo.prefix.dev/emscripten-forge-bot/emscripten-forge-6x
+  - conda-forge
+
+dependencies:
+  - cmake >=4.3.3
+  - emscripten-core =6.0.8
+  - make
+  - python

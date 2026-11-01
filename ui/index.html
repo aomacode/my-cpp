@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Inspect, optimize, compile and run C, C++, MLIR and LLVM IR entirely in your browser." />
+    <title>WasmBolt — The LLVM Project in your browser</title>
+    <link rel="stylesheet" href="./ui/styles.css" />
+    <script src="./ui/isolation.js"></script>
+    <script src="./coi-serviceworker.js"></script>
+  </head>
+  <body>
+    <svg class="icon-definitions" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <symbol id="icon-bug" viewBox="0 0 24 24"><path d="M8 8V6a4 4 0 0 1 8 0v2M8 8h8v6a4 4 0 0 1-8 0V8ZM5 11h3m8 0h3M5 16l3-1m8 0 3 1M6 5l2 2m8 0 2-2M12 8v10" /></symbol>
+      <symbol id="icon-play" viewBox="0 0 24 24"><path d="m7 4 13 8-13 8Z" /></symbol>
+      <symbol id="icon-step-over" viewBox="0 0 24 24"><path d="M5 9a7 7 0 0 1 13-1M18 4v5h-5M12 14v5m-3-3 3 3 3-3" /></symbol>
+      <symbol id="icon-step-in" viewBox="0 0 24 24"><path d="M12 3v12m-4-4 4 4 4-4M5 20h14" /></symbol>
+      <symbol id="icon-step-out" viewBox="0 0 24 24"><path d="M12 17V5m-4 4 4-4 4 4M5 21h14" /></symbol>
+      <symbol id="icon-pause" viewBox="0 0 24 24"><path d="M8 5v14M16 5v14" /></symbol>
+      <symbol id="icon-restart" viewBox="0 0 24 24"><path d="M20 9a8 8 0 1 0 1 6M20 3v6h-6" /></symbol>
+      <symbol id="icon-stop" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1" /></symbol>
+      <symbol id="icon-close" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18" /></symbol>
+      <symbol id="icon-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></symbol>
+      <symbol id="icon-files" viewBox="0 0 24 24"><path d="M7 7H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-2M14 3v5h5M9 3h5l5 5v7a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z" /></symbol>
+    </svg>
+    <header class="topbar">
+      <div class="brand">
+        <span class="mark" aria-hidden="true"><i></i><i></i><i></i></span>
+        <div>
+          <strong>WasmBolt</strong>
+          <span>The LLVM Project in your browser</span>
+        </div>
+      </div>
+      <div class="runtime-state">
+        <span id="status-dot" class="status-dot loading"></span>
+        <span id="status">Loading compiler runtime…</span>
+        <span id="version" class="version"></span>
+      </div>
+      <div class="header-actions">
+        <button id="share" class="quiet">Share</button>
+        <a href="https://github.com/anutosh491/wasmbolt" target="_blank" rel="noreferrer">GitHub</a>
+      </div>
+    </header>
+
+    <section class="controls" aria-label="Compiler controls">
+      <label>
+        <span>Language</span>
+        <select id="language">
+          <option value="cpp">C++23</option>
+          <option value="c">C23</option>
+          <option value="mlir">MLIR</option>
+          <option value="llvm">LLVM IR</option>
+        </select>
+      </label>
+      <label>
+        <span>Target</span>
+        <select id="target">
+          <option value="wasm32-unknown-emscripten">WebAssembly 32</option>
+          <option value="x86_64-unknown-linux-gnu">x86-64</option>
+          <option value="aarch64-unknown-linux-gnu">AArch64</option>
+        </select>
+      </label>
+      <label>
+        <span>Optimization</span>
+        <select id="optimization">
+          <option value="0">O0</option>
+          <option value="1">O1</option>
+          <option value="2" selected>O2</option>
+          <option value="3">O3</option>
+        </select>
+      </label>
+      <div class="primary-actions">
+        <button id="compile" class="primary" disabled>Compile</button>
+        <button id="compile-run" class="accent" disabled>Compile &amp; Run</button>
+        <button id="toggle-debugger" class="quiet" aria-label="Toggle debugger" aria-controls="debugger-panel" aria-expanded="false" title="Debugger"><svg class="ui-icon" aria-hidden="true"><use href="#icon-bug"></use></svg></button>
+      </div>
+    </section>
+
+    <main id="workspace" class="workspace">
+      <nav id="activity-bar" class="activity-bar" aria-label="Workspace panels">
+        <button id="toggle-explorer" aria-label="Toggle files" aria-controls="explorer" aria-expanded="true" title="Files"><svg class="ui-icon" aria-hidden="true"><use href="#icon-files"></use></svg></button>
+      </nav>
+      <aside id="explorer" class="explorer" aria-label="Workspace files">
+        <div class="pane-title"><strong>Explorer</strong><button id="new-file" class="quiet" disabled title="New source file" aria-label="New source file"><svg class="ui-icon" aria-hidden="true"><use href="#icon-plus"></use></svg></button></div>
+        <div class="workspace-root">workspace</div>
+        <div id="workspace-files" class="workspace-files"></div>
+      </aside>
+
+      <div id="explorer-resizer" class="resizer explorer-resizer" role="separator" aria-label="Resize Explorer" aria-orientation="vertical" tabindex="0" title="Drag to resize; double-click to restore"></div>
+
+      <section class="pane source-pane">
+        <div class="pane-title">
+          <div>
+            <span class="eyebrow">SOURCE</span>
+            <strong id="filename">snippet.cpp</strong>
+          </div>
+          <div class="source-actions">
+            <button id="clear-source" class="quiet">Clear</button>
+            <button id="reset-source" class="quiet">Reset</button>
+          </div>
+        </div>
+        <div class="source-editor">
+          <div id="source-gutter" class="source-gutter" aria-label="Source breakpoints"></div>
+          <textarea id="source" spellcheck="false" aria-label="Source code" wrap="off"></textarea>
+        </div>
+      </section>
+
+      <div id="vertical-resizer" class="resizer vertical" role="separator" aria-label="Resize source and output" aria-orientation="vertical" tabindex="0" title="Drag to resize; double-click to restore"></div>
+
+      <section class="pane output-pane">
+        <div class="pane-title output-title">
+          <nav id="tabs" class="tabs" aria-label="Compiler output">
+            <button data-tab="ast">AST</button>
+            <button data-tab="mlir">MLIR</button>
+            <button data-tab="ir">LLVM IR</button>
+            <button data-tab="optimized">Optimized IR</button>
+            <button data-tab="analysis">Analysis</button>
+            <button data-tab="cfg">CFG</button>
+            <button data-tab="assembly">Assembly</button>
+            <button data-tab="wasm">Wasm module</button>
+            <button data-tab="files">Files</button>
+          </nav>
+          <button id="copy-output" class="icon-button" title="Copy output">Copy</button>
+        </div>
+        <pre id="output" class="code-output"><span class="muted">Choose a stage or build the program to begin.</span></pre>
+        <div id="cfg-view" class="cfg-view hidden">
+          <img id="cfg-image" alt="LLVM control-flow graph" />
+        </div>
+
+        <div id="file-browser" class="file-browser hidden">
+          <label>
+            <span>Browser filesystem</span>
+            <select id="file-select"></select>
+          </label>
+          <button id="download-file" class="quiet">Download</button>
+        </div>
+
+      </section>
+
+      <section id="debugger-panel" class="pane debugger-pane hidden" aria-label="Debugger">
+        <div class="pane-title"><strong>Debugger</strong><button id="close-debugger" class="quiet" aria-label="Close debugger panel" title="Close debugger panel"><svg class="ui-icon" aria-hidden="true"><use href="#icon-close"></use></svg></button></div>
+        <div class="debugger-target">
+          <label for="debugger-target">Debug target</label>
+          <select id="debugger-target" aria-describedby="debugger-program" disabled><option value="">Build current source</option></select>
+          <p id="debugger-program">Start builds the current source with debug information.</p>
+        </div>
+        <div class="debugger-actions" aria-label="Debugger controls">
+          <button id="debugger-start" disabled>Start</button>
+          <button id="debugger-continue" disabled title="Continue" aria-label="Continue"><svg class="ui-icon" aria-hidden="true"><use href="#icon-play"></use></svg></button>
+          <button id="debugger-step-over" disabled title="Step over" aria-label="Step over"><svg class="ui-icon" aria-hidden="true"><use href="#icon-step-over"></use></svg></button>
+          <button id="debugger-step-in" disabled title="Step into" aria-label="Step into"><svg class="ui-icon" aria-hidden="true"><use href="#icon-step-in"></use></svg></button>
+          <button id="debugger-step-out" disabled title="Step out" aria-label="Step out"><svg class="ui-icon" aria-hidden="true"><use href="#icon-step-out"></use></svg></button>
+          <button id="debugger-pause" disabled title="Pause" aria-label="Pause"><svg class="ui-icon" aria-hidden="true"><use href="#icon-pause"></use></svg></button>
+          <button id="debugger-restart" disabled title="Restart" aria-label="Restart"><svg class="ui-icon" aria-hidden="true"><use href="#icon-restart"></use></svg></button>
+          <button id="debugger-stop" disabled title="Stop" aria-label="Stop"><svg class="ui-icon" aria-hidden="true"><use href="#icon-stop"></use></svg></button>
+        </div>
+        <p class="debugger-notice">Debugger support is not installed in this build.</p>
+        <div class="debugger-details">
+          <section><h3>Variables</h3><div id="debugger-variables" class="muted">No paused variables.</div></section>
+          <section><h3>Call stack</h3><div id="debugger-frames" class="muted">No paused frames.</div></section>
+        </div>
+        <section class="debugger-console"><h3>Debug console</h3><pre id="debugger-log" aria-live="polite"></pre><input id="debugger-command" aria-label="Debugger command" placeholder="Debugger not installed" disabled /></section>
+      </section>
+
+      <div id="horizontal-resizer" class="resizer horizontal" role="separator" aria-label="Resize terminal" aria-orientation="horizontal" tabindex="0" title="Drag to resize; double-click to restore"></div>
+
+      <details id="advanced" class="advanced-pane">
+        <summary><span>Advanced terminal</span><small>run clang, mlir-opt, mlir-translate, opt, llc, dot and wasm-ld</small></summary>
+        <div class="advanced-content">
+          <section id="runner" class="runner hidden">
+            <label><span>Export</span><select id="symbol"></select></label>
+            <label>
+              <span>Wasm signature</span>
+              <output id="signature" class="signature-output"></output>
+            </label>
+            <label id="arg-a-wrap"><span>Argument 1</span><input id="arg-a" type="number" value="5" step="any" /></label>
+            <label id="arg-b-wrap" class="hidden"><span>Argument 2</span><input id="arg-b" type="number" value="4" step="any" /></label>
+            <button id="execute" class="accent">Run</button>
+          </section>
+          <section class="console-pane">
+            <div class="terminal-actions">
+              <button id="load-wasm" class="quiet" disabled>Load selected .wasm</button>
+              <button id="clear-log" class="quiet">Clear</button>
+            </div>
+            <div id="terminal-scroll" class="terminal-scroll">
+              <pre id="log"></pre>
+              <form class="command-line">
+                <span>wasmbolt %</span>
+                <input id="command" aria-label="Terminal command" autocomplete="off" spellcheck="false" disabled />
+              </form>
+            </div>
+          </section>
+        </div>
+      </details>
+    </main>
+
+    <footer>
+      <span>No compiler server. MLIR, Clang, LLVM, LLD and generated code execute in this browser.</span>
+      <span id="targets">Targets: loading…</span>
+    </footer>
+
+    <script type="module" src="./ui/app.js"></script>
+  </body>
+</html>
